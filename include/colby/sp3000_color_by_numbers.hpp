@@ -6,6 +6,8 @@
 
 #include "color_by_numbers.hpp"
 #include "hash.hpp"
+#include <boost/iterator/indirect_iterator.hpp>
+#include <boost/range/iterator_range.hpp>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/types.hpp>
 #include <cstddef>
@@ -34,7 +36,8 @@ private:
 		class vertex {
 		private:
 			sp3000_color_by_numbers::cell cell_;
-			std::unordered_set<vertex *> adj_list_;
+			using adjacency_list = std::unordered_set<vertex *>;
+			adjacency_list adj_list_;
 			graph & owner_;
 		public:
 			explicit vertex (graph &);
@@ -46,6 +49,8 @@ private:
 			void add (cv::Point);
 			void add (vertex &);
 			void merge (const vertex &);
+			using neighbors_type = boost::iterator_range<boost::indirect_iterator<adjacency_list::const_iterator>>;
+			neighbors_type neighbors () const noexcept;
 		};
 	private:
 		class hasher {
@@ -73,6 +78,8 @@ private:
 	static void subtract (cell &, const cell &);
 	std::unique_ptr<graph> divide (const cv::Mat &) const;
 public:
+	sp3000_color_by_numbers () = delete;
+	explicit sp3000_color_by_numbers (float flood_fill_tolerance);
 	virtual result convert (const cv::Mat & src) override;
 };
 

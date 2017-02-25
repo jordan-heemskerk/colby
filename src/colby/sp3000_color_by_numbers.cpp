@@ -61,6 +61,10 @@ void sp3000_color_by_numbers::graph::vertex::merge (const vertex & v) {
 	owner_.vertices_.erase(v);
 }
 
+sp3000_color_by_numbers::graph::vertex::neighbors_type sp3000_color_by_numbers::graph::vertex::neighbors () const noexcept {
+	return neighbors_type(adj_list_.begin(),adj_list_.end());
+}
+
 std::size_t sp3000_color_by_numbers::graph::hasher::operator () (const vertex & v) const noexcept {
 	std::hash<const vertex *> impl;
 	return impl(&v);
@@ -135,6 +139,8 @@ std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide 
 	return retr;
 }
 
+sp3000_color_by_numbers::sp3000_color_by_numbers (float flood_fill_tolerance) : flood_fill_tolerance_(flood_fill_tolerance) {	}
+
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert (const cv::Mat & src) {
 	if (src.type() != CV_32FC3) throw std::logic_error(
 		"Expected cv::Mat::type to return CV_32FC3"
@@ -142,7 +148,9 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert (const cv::Mat 
 	//	1. Convert the pixels to the CIELAB colour space
 	auto lab = convert_to_lab(src);
 	//	2. Divide the image into like-colored cells using flood fill
-	divide(lab);
+	auto graph = divide(lab);
+	
+
 	throw 1;
 }
 
