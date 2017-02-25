@@ -1,3 +1,4 @@
+#include <boost/iterator/filter_iterator.hpp>
 #include <colby/algorithm.hpp>
 #include <colby/sp3000_color_by_numbers.hpp>
 #include <opencv2/core/mat.hpp>
@@ -201,12 +202,12 @@ void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
 	//
 	//	However it is possible that these cells are small enough
 	//	that "longest border" isn't particularly meaningful...
+	auto filter = [&] (auto && vertex) noexcept {	return vertex.size() <= small_cell_threshold_;	};
 	auto vertices = g.vertices();
-	auto begin = vertices.begin();
-	auto end = vertices.end();
+	auto begin = boost::make_filter_iterator(filter,vertices.begin(),vertices.end());
+	auto end = boost::make_filter_iterator(filter,vertices.end(),vertices.end());
 	while (begin != end) {
 		auto && curr = *(begin++);
-		if (curr.size() > small_cell_threshold_) continue;
 		auto ns = curr.neighbors();
 		auto iter = std::max_element(ns.begin(),ns.end(),[] (auto && a, auto && b) noexcept {
 			return a.size() < b.size();
