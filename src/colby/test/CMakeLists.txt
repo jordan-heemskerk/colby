@@ -1,4 +1,5 @@
 add_executable(tests
+	algorithm.cpp
 	hash.cpp
 	main.cpp
 )
