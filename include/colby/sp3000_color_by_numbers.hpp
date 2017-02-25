@@ -81,6 +81,7 @@ private:
 	static cell image_as_cell (const cv::Mat &);
 	static void subtract (cell &, const cell &);
 	std::unique_ptr<graph> divide (const cv::Mat &) const;
+	void merge_small_cells_impl (graph &, std::size_t) const;
 	void merge_small_cells (graph &) const;
 	result convert_impl (const cv::Mat & src);
 public:

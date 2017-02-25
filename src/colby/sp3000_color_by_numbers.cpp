@@ -190,7 +190,7 @@ std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide 
 	return retr;
 }
 
-void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
+void sp3000_color_by_numbers::merge_small_cells_impl (graph & g, std::size_t size) const {
 	//	The criterion for choosing which neighbor to merge
 	//	a small cell into is implemented by Sp3000 as:
 	//
@@ -202,7 +202,7 @@ void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
 	//
 	//	However it is possible that these cells are small enough
 	//	that "longest border" isn't particularly meaningful...
-	auto filter = [&] (auto && vertex) noexcept {	return vertex.size() <= small_cell_threshold_;	};
+	auto filter = [&] (auto && vertex) noexcept {	return vertex.size() == size;	};
 	auto vertices = g.vertices();
 	auto begin = boost::make_filter_iterator(filter,vertices.begin(),vertices.end());
 	auto end = boost::make_filter_iterator(filter,vertices.end(),vertices.end());
@@ -222,6 +222,11 @@ void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
 		//	—Jordan Heemskerk, 2017
 		iter->merge(curr,false);
 	}
+}
+
+void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
+	std::size_t i = 0;
+	while ((i++) < small_cell_threshold_) merge_small_cells_impl(g,i);
 }
 
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv::Mat & src) {
