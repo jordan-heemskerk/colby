@@ -1,9 +1,11 @@
+#include <boost/iterator/filter_iterator.hpp>
 #include <colby/algorithm.hpp>
 #include <colby/sp3000_color_by_numbers.hpp>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/matx.hpp>
 #include <opencv2/core/types.hpp>
 #include <opencv2/imgproc.hpp>
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -13,13 +15,13 @@
 
 namespace colby {
 
-sp3000_color_by_numbers::graph::vertex::vertex (graph & owner) : owner_(owner) {	}
+sp3000_color_by_numbers::graph::vertex::vertex (graph & owner) : color_(0,0,0), owner_(owner) {	}
 
 const sp3000_color_by_numbers::cell & sp3000_color_by_numbers::graph::vertex::cell () const noexcept {
 	return cell_;
 }
 
-void sp3000_color_by_numbers::graph::vertex::add (cv::Point p) {
+void sp3000_color_by_numbers::graph::vertex::add (cv::Point p, cv::Vec3f c) {
 	auto pair = owner_.lookup_.emplace(p,this);
 	if (!pair.second) {
 		if (pair.first->second == this) return;
@@ -32,6 +34,9 @@ void sp3000_color_by_numbers::graph::vertex::add (cv::Point p) {
 	} catch (...) {
 		owner_.lookup_.erase(pair.first);
 	}
+	color_ *= float(cell_.size() - 1U);
+	color_ += c;
+	color_ /= float(cell_.size());
 }
 
 void sp3000_color_by_numbers::graph::vertex::add (vertex & v) {
@@ -45,12 +50,17 @@ void sp3000_color_by_numbers::graph::vertex::add (vertex & v) {
 	}
 }
 
-void sp3000_color_by_numbers::graph::vertex::merge (const vertex & v) {
+void sp3000_color_by_numbers::graph::vertex::merge (const vertex & v, bool avg) {
 	//	Note: If anything in this method throws, die
 	//	as the state is corrupted and it's not worth
 	//	the effort to give a strong exception guarantee
 	//
 	//	TODO: Perhaps in the future clean this up
+	if (avg) {
+		color_ *= float(cell_.size());
+		color_ += v.color_ * float(v.cell_.size());
+		color_ /= float(cell_.size() + v.cell_.size());
+	}
 	for (auto && p : v.cell_) cell_.insert(p);
 	auto ptr = const_cast<vertex *>(&v);
 	for (auto && n : v.adj_list_) {
@@ -63,6 +73,10 @@ void sp3000_color_by_numbers::graph::vertex::merge (const vertex & v) {
 
 sp3000_color_by_numbers::graph::vertex::neighbors_type sp3000_color_by_numbers::graph::vertex::neighbors () const noexcept {
 	return neighbors_type(adj_list_.begin(),adj_list_.end());
+}
+
+std::size_t sp3000_color_by_numbers::graph::vertex::size () const noexcept {
+	return cell_.size();
 }
 
 std::size_t sp3000_color_by_numbers::graph::hasher::operator () (const vertex & v) const noexcept {
@@ -83,6 +97,10 @@ sp3000_color_by_numbers::graph::vertex * sp3000_color_by_numbers::graph::find (c
 	auto iter = lookup_.find(p);
 	if (iter == lookup_.end()) return nullptr;
 	return iter->second;
+}
+
+sp3000_color_by_numbers::graph::vertices_type sp3000_color_by_numbers::graph::vertices () noexcept {
+	return vertices_type(vertices_.begin(),vertices_.end());
 }
 
 cv::Mat sp3000_color_by_numbers::convert_to_lab (const cv::Mat & img) const {
@@ -116,7 +134,7 @@ std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide 
 		set = flood_fill(
 			img,
 			point,
-			[&] (auto && curr) noexcept {
+			[&] (auto && curr) {
 				auto n = retr->find(curr);
 				if (n) {
 					vertex.add(*n);
@@ -126,7 +144,7 @@ std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide 
 				auto diff = curr_color - color;
 				auto squared_norm = (diff[0] * diff[0]) + (diff[1] * diff[1]) + (diff[2] * diff[2]);
 				if (squared_norm < tolerance) {
-					vertex.add(curr);
+					vertex.add(curr,curr_color);
 					return true;
 				}
 				return false;
@@ -139,7 +157,46 @@ std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide 
 	return retr;
 }
 
-sp3000_color_by_numbers::sp3000_color_by_numbers (float flood_fill_tolerance) : flood_fill_tolerance_(flood_fill_tolerance) {	}
+void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
+	//	The criterion for choosing which neighbor to merge
+	//	a small cell into is implemented by Sp3000 as:
+	//
+	//	closest_cell = max(neighbour_cells, key=neighbour_cells.count)
+	//
+	//	We will implement this check in the same way, however we
+	//	observe that it might be better to choose the cell with
+	//	which the small cell has the longest border
+	//
+	//	However it is possible that these cells are small enough
+	//	that "longest border" isn't particularly meaningful...
+	auto filter = [&] (auto && vertex) noexcept {	return vertex.size() <= small_cell_threshold_;	};
+	auto vertices = g.vertices();
+	auto begin = boost::make_filter_iterator(filter,vertices.begin(),vertices.end());
+	auto end = boost::make_filter_iterator(filter,vertices.end(),vertices.end());
+	while (begin != end) {
+		auto && curr = *(begin++);
+		auto ns = curr.neighbors();
+		auto iter = std::max_element(ns.begin(),ns.end(),[] (auto && a, auto && b) noexcept {
+			return a.size() < b.size();
+		});
+		if (iter == ns.end()) throw std::logic_error("Small cell with no neighbors");
+		//	We don't allow this cell to contribute to average of
+		//	larger cell:
+		//
+		//	"You don't want to pollute your large region with that
+		//	tiny little bit."
+		//
+		//	—Jordan Heemskerk, 2017
+		iter->merge(curr,false);
+	}
+}
+
+sp3000_color_by_numbers::sp3000_color_by_numbers (
+	float flood_fill_tolerance,
+	std::size_t small_cell_threshold
+)	:	flood_fill_tolerance_(flood_fill_tolerance),
+		small_cell_threshold_(small_cell_threshold)
+{	}
 
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert (const cv::Mat & src) {
 	if (src.type() != CV_32FC3) throw std::logic_error(
@@ -148,8 +205,9 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert (const cv::Mat 
 	//	1. Convert the pixels to the CIELAB colour space
 	auto lab = convert_to_lab(src);
 	//	2. Divide the image into like-colored cells using flood fill
-	auto graph = divide(lab);
-	
+	auto g = divide(lab);
+	//	3. Merge together small cells with their neighbours
+	merge_small_cells(*g);
 
 	throw 1;
 }

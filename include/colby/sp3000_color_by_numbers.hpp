@@ -9,6 +9,7 @@
 #include <boost/iterator/indirect_iterator.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <opencv2/core/mat.hpp>
+#include <opencv2/core/matx.hpp>
 #include <opencv2/core/types.hpp>
 #include <cstddef>
 #include <memory>
@@ -38,6 +39,7 @@ private:
 			sp3000_color_by_numbers::cell cell_;
 			using adjacency_list = std::unordered_set<vertex *>;
 			adjacency_list adj_list_;
+			cv::Vec3f color_;
 			graph & owner_;
 		public:
 			explicit vertex (graph &);
@@ -46,11 +48,12 @@ private:
 			vertex & operator = (const vertex &) = delete;
 			vertex & operator = (vertex &&) = delete;
 			const sp3000_color_by_numbers::cell & cell () const noexcept;
-			void add (cv::Point);
+			void add (cv::Point, cv::Vec3f);
 			void add (vertex &);
-			void merge (const vertex &);
+			void merge (const vertex &, bool avg = true);
 			using neighbors_type = boost::iterator_range<boost::indirect_iterator<adjacency_list::const_iterator>>;
 			neighbors_type neighbors () const noexcept;
+			std::size_t size () const noexcept;
 		};
 	private:
 		class hasher {
@@ -61,7 +64,8 @@ private:
 		public:
 			bool operator () (const vertex &, const vertex &) const noexcept;
 		};
-		std::unordered_set<vertex,hasher,equals> vertices_;
+		using vertices_internal = std::unordered_set<vertex,hasher,equals>;
+		vertices_internal vertices_;
 		std::unordered_map<cv::Point,vertex *> lookup_;
 	public:
 		graph () = default;
@@ -71,15 +75,22 @@ private:
 		graph & operator = (graph &&) = delete;
 		vertex & add ();
 		vertex * find (cv::Point);
+		using vertices_type = boost::iterator_range<vertices_internal::iterator>;
+		vertices_type vertices () noexcept;
 	};
 	float flood_fill_tolerance_;
+	std::size_t small_cell_threshold_;
 	cv::Mat convert_to_lab (const cv::Mat &) const;
 	static cell image_as_cell (const cv::Mat &);
 	static void subtract (cell &, const cell &);
 	std::unique_ptr<graph> divide (const cv::Mat &) const;
+	void merge_small_cells (graph &) const;
 public:
 	sp3000_color_by_numbers () = delete;
-	explicit sp3000_color_by_numbers (float flood_fill_tolerance);
+	/**
+	 *
+	 */
+	explicit sp3000_color_by_numbers (float flood_fill_tolerance, std::size_t small_cell_threshold);
 	virtual result convert (const cv::Mat & src) override;
 };
 
