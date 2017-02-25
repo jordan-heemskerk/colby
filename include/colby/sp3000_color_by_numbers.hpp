@@ -12,6 +12,7 @@
 #include <opencv2/core/matx.hpp>
 #include <opencv2/core/types.hpp>
 #include <cstddef>
+#include <deque>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -49,7 +50,7 @@ private:
 			vertex & operator = (vertex &&) = delete;
 			void add (cv::Point, cv::Vec3f);
 			void add (vertex &);
-			void merge (const vertex &, bool avg = true);
+			void merge (vertex &, bool avg = true);
 			using neighbors_type = boost::iterator_range<boost::indirect_iterator<adjacency_list::const_iterator>>;
 			neighbors_type neighbors () const noexcept;
 			std::size_t size () const noexcept;
@@ -57,15 +58,8 @@ private:
 			const cell & points () const noexcept;
 		};
 	private:
-		class hasher {
-		public:
-			std::size_t operator () (const vertex &) const noexcept;
-		};
-		class equals {
-		public:
-			bool operator () (const vertex &, const vertex &) const noexcept;
-		};
-		using vertices_internal = std::unordered_set<vertex,hasher,equals>;
+		std::deque<vertex> vertices_storage_;
+		using vertices_internal = std::unordered_set<vertex *>;
 		vertices_internal vertices_;
 		std::unordered_map<cv::Point,vertex *> lookup_;
 	public:
@@ -76,7 +70,7 @@ private:
 		graph & operator = (graph &&) = delete;
 		vertex & add ();
 		vertex * find (cv::Point);
-		using vertices_type = boost::iterator_range<vertices_internal::iterator>;
+		using vertices_type = boost::iterator_range<boost::indirect_iterator<vertices_internal::iterator>>;
 		vertices_type vertices () noexcept;
 		std::size_t size () const noexcept;
 	};

@@ -52,7 +52,7 @@ void sp3000_color_by_numbers::graph::vertex::add (vertex & v) {
 	}
 }
 
-void sp3000_color_by_numbers::graph::vertex::merge (const vertex & v, bool avg) {
+void sp3000_color_by_numbers::graph::vertex::merge (vertex & v, bool avg) {
 	//	Note: If anything in this method throws, die
 	//	as the state is corrupted and it's not worth
 	//	the effort to give a strong exception guarantee
@@ -67,15 +67,21 @@ void sp3000_color_by_numbers::graph::vertex::merge (const vertex & v, bool avg) 
 		cell_.insert(p);
 		owner_.lookup_[p] = this;
 	}
-	auto ptr = const_cast<vertex *>(&v);
-	for (auto && n : v.adj_list_) {
-		auto erased = n->adj_list_.erase(ptr);
+	auto erased = v.adj_list_.erase(this);
+	assert(erased);
+	erased = adj_list_.erase(&v);
+	assert(erased);
+	while (!v.adj_list_.empty()) {
+		auto iter = v.adj_list_.begin();
+		auto n = *iter;
+		v.adj_list_.erase(iter);
+		erased = n->adj_list_.erase(&v);
 		assert(erased);
-		auto pair1 = n->adj_list_.insert(this);
-		auto pair2 = adj_list_.insert(n);
-		assert(pair1.second == pair2.second);
+		auto back_reference_created = n->adj_list_.insert(this).second;
+		auto forward_reference_created = adj_list_.insert(n).second;
+		assert(back_reference_created == forward_reference_created);
 	}
-	auto erased = owner_.vertices_.erase(v);
+	erased = owner_.vertices_.erase(&v);
 	assert(erased);
 }
 
@@ -95,18 +101,16 @@ const sp3000_color_by_numbers::cell & sp3000_color_by_numbers::graph::vertex::po
 	return cell_;
 }
 
-std::size_t sp3000_color_by_numbers::graph::hasher::operator () (const vertex & v) const noexcept {
-	std::hash<const vertex *> impl;
-	return impl(&v);
-}
-
-bool sp3000_color_by_numbers::graph::equals::operator () (const vertex & a, const vertex & b) const noexcept {
-	return &a == &b;
-}
-
 sp3000_color_by_numbers::graph::vertex & sp3000_color_by_numbers::graph::add () {
-	auto pair = vertices_.emplace(*this);
-	return const_cast<vertex &>(*pair.first);
+	vertices_storage_.emplace_back(*this);
+	auto & retr = vertices_storage_.back();
+	try {
+		vertices_.insert(&retr);
+	} catch (...) {
+		vertices_storage_.pop_back();
+		throw;
+	}
+	return retr;
 }
 
 sp3000_color_by_numbers::graph::vertex * sp3000_color_by_numbers::graph::find (cv::Point p) {
@@ -225,7 +229,6 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv:
 	auto lab = convert_bgr_to_lab(src);
 	//	2. Divide the image into like-colored cells using flood fill
 	auto g = divide(lab);
-	//g->print();
 	//	3. Merge together small cells with their neighbours
 	merge_small_cells(*g);
 
