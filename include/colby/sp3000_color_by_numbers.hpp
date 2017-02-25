@@ -36,7 +36,7 @@ private:
 	public:
 		class vertex {
 		private:
-			sp3000_color_by_numbers::cell cell_;
+			cell cell_;
 			using adjacency_list = std::unordered_set<vertex *>;
 			adjacency_list adj_list_;
 			cv::Vec3f color_;
@@ -47,13 +47,15 @@ private:
 			vertex (vertex &&) = delete;
 			vertex & operator = (const vertex &) = delete;
 			vertex & operator = (vertex &&) = delete;
-			const sp3000_color_by_numbers::cell & cell () const noexcept;
 			void add (cv::Point, cv::Vec3f);
 			void add (vertex &);
 			void merge (const vertex &, bool avg = true);
 			using neighbors_type = boost::iterator_range<boost::indirect_iterator<adjacency_list::const_iterator>>;
 			neighbors_type neighbors () const noexcept;
 			std::size_t size () const noexcept;
+			cv::Vec3f color () const noexcept;
+			const cell & points () const noexcept;
+			void print () const;
 		};
 	private:
 		class hasher {
@@ -77,14 +79,17 @@ private:
 		vertex * find (cv::Point);
 		using vertices_type = boost::iterator_range<vertices_internal::iterator>;
 		vertices_type vertices () noexcept;
+		void print () const;
 	};
 	float flood_fill_tolerance_;
 	std::size_t small_cell_threshold_;
-	cv::Mat convert_to_lab (const cv::Mat &) const;
+	cv::Mat convert_bgr_to_lab (const cv::Mat &) const;
+	cv::Mat convert_lab_to_bgr (const cv::Mat &) const;
 	static cell image_as_cell (const cv::Mat &);
 	static void subtract (cell &, const cell &);
 	std::unique_ptr<graph> divide (const cv::Mat &) const;
 	void merge_small_cells (graph &) const;
+	result convert_impl (const cv::Mat & src);
 public:
 	sp3000_color_by_numbers () = delete;
 	/**

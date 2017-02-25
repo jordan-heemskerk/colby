@@ -7,6 +7,7 @@
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -16,10 +17,6 @@
 namespace colby {
 
 sp3000_color_by_numbers::graph::vertex::vertex (graph & owner) : color_(0,0,0), owner_(owner) {	}
-
-const sp3000_color_by_numbers::cell & sp3000_color_by_numbers::graph::vertex::cell () const noexcept {
-	return cell_;
-}
 
 void sp3000_color_by_numbers::graph::vertex::add (cv::Point p, cv::Vec3f c) {
 	auto pair = owner_.lookup_.emplace(p,this);
@@ -33,6 +30,7 @@ void sp3000_color_by_numbers::graph::vertex::add (cv::Point p, cv::Vec3f c) {
 		cell_.insert(p);
 	} catch (...) {
 		owner_.lookup_.erase(pair.first);
+		throw;
 	}
 	color_ *= float(cell_.size() - 1U);
 	color_ += c;
@@ -47,6 +45,7 @@ void sp3000_color_by_numbers::graph::vertex::add (vertex & v) {
 		v.adj_list_.insert(this);
 	} catch (...) {
 		adj_list_.erase(pair.first);
+		throw;
 	}
 }
 
@@ -61,13 +60,15 @@ void sp3000_color_by_numbers::graph::vertex::merge (const vertex & v, bool avg) 
 		color_ += v.color_ * float(v.cell_.size());
 		color_ /= float(cell_.size() + v.cell_.size());
 	}
-	for (auto && p : v.cell_) cell_.insert(p);
+	for (auto && p : v.cell_) {
+		cell_.insert(p);
+		owner_.lookup_[p] = this;
+	}
 	auto ptr = const_cast<vertex *>(&v);
 	for (auto && n : v.adj_list_) {
 		n->adj_list_.erase(ptr);
 		n->adj_list_.insert(this);
 	}
-	adj_list_.erase(ptr);
 	owner_.vertices_.erase(v);
 }
 
@@ -77,6 +78,18 @@ sp3000_color_by_numbers::graph::vertex::neighbors_type sp3000_color_by_numbers::
 
 std::size_t sp3000_color_by_numbers::graph::vertex::size () const noexcept {
 	return cell_.size();
+}
+
+cv::Vec3f sp3000_color_by_numbers::graph::vertex::color () const noexcept {
+	return color_;
+}
+
+const sp3000_color_by_numbers::cell & sp3000_color_by_numbers::graph::vertex::points () const noexcept {
+	return cell_;
+}
+
+void sp3000_color_by_numbers::graph::vertex::print () const {
+	std::cout << "\nPoints: " << cell_.size() << ", Neighbors: " << adj_list_.size() << "\n";
 }
 
 std::size_t sp3000_color_by_numbers::graph::hasher::operator () (const vertex & v) const noexcept {
@@ -103,9 +116,22 @@ sp3000_color_by_numbers::graph::vertices_type sp3000_color_by_numbers::graph::ve
 	return vertices_type(vertices_.begin(),vertices_.end());
 }
 
-cv::Mat sp3000_color_by_numbers::convert_to_lab (const cv::Mat & img) const {
+void sp3000_color_by_numbers::graph::print () const {
+	std::cout << "Vertices: " << vertices_.size();
+	for (auto && v : vertices_) v.print();
+}
+
+cv::Mat sp3000_color_by_numbers::convert_bgr_to_lab (const cv::Mat & img) const {
 	cv::Mat retr;
-	cv::cvtColor(img,retr,CV_BGR2Lab);
+	cv::cvtColor(img,retr,CV_BGR2RGB);
+	if (!retr.data) throw std::runtime_error("cv::cvtColor failed to convert image to Lab");
+	return retr;
+}
+
+cv::Mat sp3000_color_by_numbers::convert_lab_to_bgr (const cv::Mat & img) const {
+	cv::Mat retr;
+	cv::cvtColor(img,retr,CV_RGB2BGR);
+	if (!retr.data) throw std::runtime_error("cv::cvtColor failed to convert image to BGR");
 	return retr;
 }
 
@@ -180,6 +206,7 @@ void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
 			return a.size() < b.size();
 		});
 		if (iter == ns.end()) throw std::logic_error("Small cell with no neighbors");
+		std::cout << iter->size() << std::endl;
 		//	We don't allow this cell to contribute to average of
 		//	larger cell:
 		//
@@ -191,6 +218,25 @@ void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
 	}
 }
 
+sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv::Mat & src) {
+	//	1. Convert the pixels to the CIELAB colour space
+	auto lab = convert_bgr_to_lab(src);
+	//	2. Divide the image into like-colored cells using flood fill
+	auto g = divide(lab);
+	//g->print();
+	//	3. Merge together small cells with their neighbours
+	merge_small_cells(*g);
+
+
+	cv::Mat mat(src.rows,src.cols,CV_32FC3);
+	for (auto && v : g->vertices()) {
+		for (auto && p : v.points()) {
+			mat.at<cv::Vec3f>(p) = v.color();
+		}
+	}
+	return result(convert_lab_to_bgr(mat));
+}
+
 sp3000_color_by_numbers::sp3000_color_by_numbers (
 	float flood_fill_tolerance,
 	std::size_t small_cell_threshold
@@ -199,21 +245,16 @@ sp3000_color_by_numbers::sp3000_color_by_numbers (
 {	}
 
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert (const cv::Mat & src) {
-	const cv::Mat * in = &src;
-	cv::Mat cvt;
-	if (src.type() != CV_32FC3) {
-		src.convertTo(cvt,CV_32FC3);
-		if (!cvt.data) throw std::runtime_error("cv::Mat::convertTo failed to convert image to CV_32FC3");
-		in = &cvt;
-	}
-	//	1. Convert the pixels to the CIELAB colour space
-	auto lab = convert_to_lab(*in);
-	//	2. Divide the image into like-colored cells using flood fill
-	auto g = divide(lab);
-	//	3. Merge together small cells with their neighbours
-	merge_small_cells(*g);
-
-	throw 1;
+	//	TODO: More comprehensive conversion/handling
+	if (src.type() != CV_8UC3) throw std::logic_error("Expected 3 channel 8 bit image");
+	cv::Mat mat;
+	src.convertTo(mat,CV_32FC3,1.0f / 255.0f);
+	if (!mat.data) throw std::runtime_error("cv::Mat::convertTo failed to convert to 3 channel 32 bit float image");
+	auto retr = convert_impl(mat);
+	retr.image().convertTo(mat,CV_8UC3,255);
+	if (!mat.data) throw std::runtime_error("cv::Mat::convertTo failed to convert to 3 channel 8 bit image");
+	retr.image() = std::move(mat);
+	return retr;
 }
 
 }
