@@ -199,11 +199,15 @@ sp3000_color_by_numbers::sp3000_color_by_numbers (
 {	}
 
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert (const cv::Mat & src) {
-	if (src.type() != CV_32FC3) throw std::logic_error(
-		"Expected cv::Mat::type to return CV_32FC3"
-	);
+	const cv::Mat * in = &src;
+	cv::Mat cvt;
+	if (src.type() != CV_32FC3) {
+		src.convertTo(cvt,CV_32FC3);
+		if (!cvt.data) throw std::runtime_error("cv::Mat::convertTo failed to convert image to CV_32FC3");
+		in = &cvt;
+	}
 	//	1. Convert the pixels to the CIELAB colour space
-	auto lab = convert_to_lab(src);
+	auto lab = convert_to_lab(*in);
 	//	2. Divide the image into like-colored cells using flood fill
 	auto g = divide(lab);
 	//	3. Merge together small cells with their neighbours
