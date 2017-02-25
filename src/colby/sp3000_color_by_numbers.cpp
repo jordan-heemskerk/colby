@@ -5,6 +5,7 @@
 #include <opencv2/core/types.hpp>
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
+#include <cassert>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -39,9 +40,13 @@ void sp3000_color_by_numbers::graph::vertex::add (cv::Point p, cv::Vec3f c) {
 void sp3000_color_by_numbers::graph::vertex::add (vertex & v) {
 	if (&v == this) throw std::logic_error("Loop not allowed");
 	auto pair = adj_list_.insert(&v);
-	if (!pair.second) return;
+	if (!pair.second) {
+		assert(v.adj_list_.count(this));
+		return;
+	}
 	try {
-		v.adj_list_.insert(this);
+		auto pair2 = v.adj_list_.insert(this);
+		assert(pair2.second);
 	} catch (...) {
 		adj_list_.erase(pair.first);
 		throw;
@@ -65,10 +70,14 @@ void sp3000_color_by_numbers::graph::vertex::merge (const vertex & v, bool avg) 
 	}
 	auto ptr = const_cast<vertex *>(&v);
 	for (auto && n : v.adj_list_) {
-		n->adj_list_.erase(ptr);
-		n->adj_list_.insert(this);
+		auto erased = n->adj_list_.erase(ptr);
+		assert(erased);
+		auto pair1 = n->adj_list_.insert(this);
+		auto pair2 = adj_list_.insert(n);
+		assert(pair1.second == pair2.second);
 	}
-	owner_.vertices_.erase(v);
+	auto erased = owner_.vertices_.erase(v);
+	assert(erased);
 }
 
 sp3000_color_by_numbers::graph::vertex::neighbors_type sp3000_color_by_numbers::graph::vertex::neighbors () const noexcept {
@@ -96,8 +105,8 @@ std::size_t sp3000_color_by_numbers::graph::hasher::operator () (const vertex & 
 	return impl(&v);
 }
 
-bool sp3000_color_by_numbers::graph::equals::operator () (const vertex &, const vertex &) const noexcept {
-	return false;
+bool sp3000_color_by_numbers::graph::equals::operator () (const vertex & a, const vertex & b) const noexcept {
+	return &a == &b;
 }
 
 sp3000_color_by_numbers::graph::vertex & sp3000_color_by_numbers::graph::add () {
@@ -118,6 +127,10 @@ sp3000_color_by_numbers::graph::vertices_type sp3000_color_by_numbers::graph::ve
 void sp3000_color_by_numbers::graph::print () const {
 	std::cout << "Vertices: " << vertices_.size();
 	for (auto && v : vertices_) v.print();
+}
+
+std::size_t sp3000_color_by_numbers::graph::size () const noexcept {
+	return vertices_.size();
 }
 
 cv::Mat sp3000_color_by_numbers::convert_bgr_to_lab (const cv::Mat & img) const {

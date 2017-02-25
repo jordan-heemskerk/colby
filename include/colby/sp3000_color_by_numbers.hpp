@@ -80,6 +80,7 @@ private:
 		using vertices_type = boost::iterator_range<vertices_internal::iterator>;
 		vertices_type vertices () noexcept;
 		void print () const;
+		std::size_t size () const noexcept;
 	};
 	float flood_fill_tolerance_;
 	std::size_t small_cell_threshold_;
