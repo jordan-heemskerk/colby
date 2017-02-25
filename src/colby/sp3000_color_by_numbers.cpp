@@ -4,6 +4,8 @@
 #include <opencv2/core/matx.hpp>
 #include <opencv2/core/types.hpp>
 #include <opencv2/imgproc.hpp>
+#include <functional>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -26,7 +28,7 @@ void sp3000_color_by_numbers::graph::vertex::add (cv::Point p) {
 		throw std::logic_error(ss.str());
 	}
 	try {
-		cell.insert(p);
+		cell_.insert(p);
 	} catch (...) {
 		owner_.lookup_.erase(pair.first);
 	}
@@ -50,22 +52,38 @@ void sp3000_color_by_numbers::graph::vertex::merge (const vertex & v) {
 	//
 	//	TODO: Perhaps in the future clean this up
 	for (auto && p : v.cell_) cell_.insert(p);
+	auto ptr = const_cast<vertex *>(&v);
 	for (auto && n : v.adj_list_) {
-		n.adj_list_.erase(&v);
-		n.adj_list_.insert(this);
+		n->adj_list_.erase(ptr);
+		n->adj_list_.insert(this);
 	}
-	adj_list_.erase(&v);
-	
+	adj_list_.erase(ptr);
+	owner_.vertices_.erase(v);
 }
 
-sp3000_color_by_numbers::vertex & sp3000_color_by_numbers::graph::add () {
-	vertices_.emplace_back();
-	return vertices_.back();
+std::size_t sp3000_color_by_numbers::graph::hasher::operator () (const vertex & v) const noexcept {
+	std::hash<const vertex *> impl;
+	return impl(&v);
+}
+
+bool sp3000_color_by_numbers::graph::equals::operator () (const vertex &, const vertex &) const noexcept {
+	return false;
+}
+
+sp3000_color_by_numbers::graph::vertex & sp3000_color_by_numbers::graph::add () {
+	auto pair = vertices_.emplace(*this);
+	return const_cast<vertex &>(*pair.first);
+}
+
+sp3000_color_by_numbers::graph::vertex * sp3000_color_by_numbers::graph::find (cv::Point p) {
+	auto iter = lookup_.find(p);
+	if (iter == lookup_.end()) return nullptr;
+	return iter->second;
 }
 
 cv::Mat sp3000_color_by_numbers::convert_to_lab (const cv::Mat & img) const {
 	cv::Mat retr;
-	cv::cvtColor(img, retr, CV_BGR2Lab);
+	cv::cvtColor(img,retr,CV_BGR2Lab);
 	return retr;
 }
 
@@ -81,29 +99,38 @@ void sp3000_color_by_numbers::subtract (cell & lhs, const cell & rhs) {
 	for (auto && obj : rhs) lhs.erase(obj);
 }
 
-sp3000_color_by_numbers::graph sp3000_color_by_numbers::divide (const cv::Mat & img) const {
+std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide (const cv::Mat & img) const {
 	auto unvisited = image_as_cell(img);
-	graph retr;
+	auto retr = std::make_unique<graph>();
 	std::vector<cv::Point> stack;
+	cell set;
 	float tolerance = flood_fill_tolerance_ * flood_fill_tolerance_;
 	while (!unvisited.empty()) {
 		auto && point = *unvisited.begin();
 		auto && color = img.at<cv::Vec3f>(point);
-		auto && vertex = retr.add();
-		auto set = flood_fill(
+		auto && vertex = retr->add();
+		set = flood_fill(
 			img,
 			point,
 			[&] (auto && curr) noexcept {
+				auto n = retr->find(curr);
+				if (n) {
+					vertex.add(*n);
+					return false;
+				}
 				auto && curr_color = img.at<cv::Vec3f>(curr);
 				auto diff = curr_color - color;
 				auto squared_norm = (diff[0] * diff[0]) + (diff[1] * diff[1]) + (diff[2] * diff[2]);
-				return squared_norm < tolerance;
+				if (squared_norm < tolerance) {
+					vertex.add(curr);
+					return true;
+				}
+				return false;
 			},
-			cell{},
+			std::move(set),
 			stack
 		);
 		subtract(unvisited,set);
-		vertex.cell() = std::move(set);
 	}
 	return retr;
 }
@@ -115,7 +142,7 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert (const cv::Mat 
 	//	1. Convert the pixels to the CIELAB colour space
 	auto lab = convert_to_lab(src);
 	//	2. Divide the image into like-colored cells using flood fill
-	auto div = divide(lab);
+	divide(lab);
 	throw 1;
 }
 

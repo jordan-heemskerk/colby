@@ -8,11 +8,10 @@
 #include "hash.hpp"
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/types.hpp>
+#include <cstddef>
 #include <memory>
-#include <list>
 #include <unordered_map>
 #include <unordered_set>
-#include <vector>
 
 namespace colby {
 
@@ -49,7 +48,15 @@ private:
 			void merge (const vertex &);
 		};
 	private:
-		std::list<vertex> vertices_;
+		class hasher {
+		public:
+			std::size_t operator () (const vertex &) const noexcept;
+		};
+		class equals {
+		public:
+			bool operator () (const vertex &, const vertex &) const noexcept;
+		};
+		std::unordered_set<vertex,hasher,equals> vertices_;
 		std::unordered_map<cv::Point,vertex *> lookup_;
 	public:
 		graph () = default;
@@ -58,14 +65,13 @@ private:
 		graph & operator = (const graph &) = delete;
 		graph & operator = (graph &&) = delete;
 		vertex & add ();
-
-
+		vertex * find (cv::Point);
 	};
 	float flood_fill_tolerance_;
 	cv::Mat convert_to_lab (const cv::Mat &) const;
 	static cell image_as_cell (const cv::Mat &);
 	static void subtract (cell &, const cell &);
-	graph divide (const cv::Mat &) const;
+	std::unique_ptr<graph> divide (const cv::Mat &) const;
 public:
 	virtual result convert (const cv::Mat & src) override;
 };
