@@ -109,8 +109,8 @@ std::unordered_set<cv::Point> flood_fill (const cv::Mat & mat, cv::Point start, 
 		auto p = std::move(stack.back());
 		stack.pop_back();
 		neighbors(mat,p,[&] (auto && p) {
-			if (!callback(p)) return;
 			if (retr.count(p) != 0) return;
+			if (!callback(p)) return;
 			stack.push_back(p);
 			retr.insert(p);
 		});

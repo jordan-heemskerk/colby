@@ -2,6 +2,7 @@
 #include <colby/hash.hpp>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/types.hpp>
+#include <cstddef>
 #include <unordered_set>
 #include <catch.hpp>
 
@@ -46,7 +47,14 @@ SCENARIO("colby::flood_fill may be used to select an area of pixels","[colby][al
 	GIVEN("An image") {
 		cv::Mat mat(cv::Mat::zeros(2,2,CV_32FC3));
 		WHEN("colby::flood_fill is called thereupon with a functor which returns true unconditionally") {
-			auto set = flood_fill(mat,cv::Point(0,0),[] (const auto &) noexcept {	return true;	});
+			std::size_t n = 0;
+			auto set = flood_fill(mat,cv::Point(0,0),[&] (const auto &) noexcept {
+				++n;
+				return true;
+			});
+			THEN("The provided callback is invoked the appropriate number of times") {
+				CHECK(n == 4U);
+			}
 			THEN("All pixels are included in the resulting set") {
 				CHECK(set.size() == 4U);
 				CHECK(set.count(cv::Point(0,0)) == 1U);
