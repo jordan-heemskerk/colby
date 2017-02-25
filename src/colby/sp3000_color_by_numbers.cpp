@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cassert>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -96,10 +95,6 @@ const sp3000_color_by_numbers::cell & sp3000_color_by_numbers::graph::vertex::po
 	return cell_;
 }
 
-void sp3000_color_by_numbers::graph::vertex::print () const {
-	std::cout << "\nPoints: " << cell_.size() << ", Neighbors: " << adj_list_.size() << "\n";
-}
-
 std::size_t sp3000_color_by_numbers::graph::hasher::operator () (const vertex & v) const noexcept {
 	std::hash<const vertex *> impl;
 	return impl(&v);
@@ -122,11 +117,6 @@ sp3000_color_by_numbers::graph::vertex * sp3000_color_by_numbers::graph::find (c
 
 sp3000_color_by_numbers::graph::vertices_type sp3000_color_by_numbers::graph::vertices () noexcept {
 	return vertices_type(vertices_.begin(),vertices_.end());
-}
-
-void sp3000_color_by_numbers::graph::print () const {
-	std::cout << "Vertices: " << vertices_.size();
-	for (auto && v : vertices_) v.print();
 }
 
 std::size_t sp3000_color_by_numbers::graph::size () const noexcept {

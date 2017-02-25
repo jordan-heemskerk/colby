@@ -55,7 +55,6 @@ private:
 			std::size_t size () const noexcept;
 			cv::Vec3f color () const noexcept;
 			const cell & points () const noexcept;
-			void print () const;
 		};
 	private:
 		class hasher {
@@ -79,7 +78,6 @@ private:
 		vertex * find (cv::Point);
 		using vertices_type = boost::iterator_range<vertices_internal::iterator>;
 		vertices_type vertices () noexcept;
-		void print () const;
 		std::size_t size () const noexcept;
 	};
 	float flood_fill_tolerance_;
