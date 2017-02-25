@@ -50,7 +50,7 @@ static void main_impl (int argc, const char ** argv) {
 	}
 	std::cout << "Read " << opts->in << ".\n"
 		<< "Converting to color by numbers..." << std::endl;
-	colby::sp3000_color_by_numbers impl(0.4f,10);
+	colby::sp3000_color_by_numbers impl(10.0f/255.0f,10);
 	auto result = impl.convert(mat);
 	std::cout << "Converted to color by numbers.\n"
 		<< "Saving to " << opts->out << "..." << std::endl;
