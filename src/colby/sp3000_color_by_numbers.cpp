@@ -213,7 +213,6 @@ void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
 			return a.size() < b.size();
 		});
 		if (iter == ns.end()) throw std::logic_error("Small cell with no neighbors");
-		std::cout << iter->size() << std::endl;
 		//	We don't allow this cell to contribute to average of
 		//	larger cell:
 		//
