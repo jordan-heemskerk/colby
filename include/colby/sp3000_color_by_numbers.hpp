@@ -94,6 +94,11 @@ private:
 	std::size_t max_final_cells_;
 	std::size_t max_final_colors_;
 	sp3000_color_by_numbers_observer * o_;
+	static cv::Mat convert_byte_to_float (const cv::Mat &);
+	static cv::Mat convert_float_to_byte (const cv::Mat &);
+	static cv::Mat convert_short_to_byte (const cv::Mat &);
+	static cv::Mat convert_to_grayscale (const cv::Mat &);
+	static cv::Mat laplacian (const cv::Mat &);
 	static cell image_as_cell (const cv::Mat &);
 	static void subtract (cell &, const cell &);
 	std::unique_ptr<graph> divide (const cv::Mat &) const;

@@ -84,6 +84,10 @@ public:
 		show("Gaussian Smooth",e);
 		print("Gaussian smooth complete!");
 	}
+	virtual void laplacian (laplacian_event e) override {
+		show("Laplacian",e);
+		print("Laplacian complete!");
+	}
 };
 
 class program_options {

@@ -146,6 +146,21 @@ public:
 	 *		about the event.
 	 */
 	virtual void gaussian_smooth (gaussian_smooth_event e) = 0;
+	/**
+	 *	Encapsulates all information about the
+	 *	Laplacian event.
+	 */
+	using laplacian_event = base_event;
+	/**
+	 *	Invoked when the Laplacian event occurs.
+	 *	This occurs when the algorithm applies the
+	 *	Laplacian to the image.
+	 *
+	 *	\param [in] e
+	 *		An object encapsulating all information
+	 *		about the event.
+	 */
+	virtual void laplacian (laplacian_event e) = 0;
 };
 
 }

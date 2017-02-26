@@ -12,8 +12,10 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -170,6 +172,50 @@ cv::Mat sp3000_color_by_numbers::graph::mat () const {
 			retr.at<cv::Vec3f>(p) = c;
 		}
 	}
+	return retr;
+}
+
+cv::Mat sp3000_color_by_numbers::convert_byte_to_float (const cv::Mat & img) {
+	assert(img.type() == CV_8UC3);
+	cv::Mat retr;
+	img.convertTo(retr,CV_32FC3,1.0f / 255.0f);
+	assert(retr.data);
+	return retr;
+}
+
+cv::Mat sp3000_color_by_numbers::convert_float_to_byte (const cv::Mat & img) {
+	assert(img.type() == CV_32FC3);
+	cv::Mat retr;
+	img.convertTo(retr,CV_8UC3,255);
+	assert(retr.data);
+	return retr;
+}
+
+cv::Mat sp3000_color_by_numbers::convert_short_to_byte (const cv::Mat & img) {
+	assert(img.type() == CV_16SC1);
+	cv::Mat retr;
+	cv::convertScaleAbs(img,retr,0.5);
+	assert(retr.data);
+	assert(retr.type() == CV_8UC1);
+	return retr;
+}
+
+cv::Mat sp3000_color_by_numbers::convert_to_grayscale (const cv::Mat & img) {
+	assert(img.type() == CV_8UC3);
+	cv::Mat retr;
+	cv::cvtColor(img,retr,CV_BGR2GRAY);
+	assert(retr.data);
+	assert(retr.type() == CV_8UC1);
+	return retr;
+}
+
+cv::Mat sp3000_color_by_numbers::laplacian (const cv::Mat & img) {
+	auto gray = convert_to_grayscale(img);
+	cv::Mat retr;
+	assert(CV_16SC1 == CV_16S);
+	cv::Laplacian(gray,retr,CV_16SC1);
+	assert(retr.data);
+	assert(retr.type() == CV_16SC1);
 	return retr;
 }
 
@@ -387,6 +433,22 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv:
 			return lab2bgr(mat_);
 		}
 	};
+	class laplacian_image_factory : public image_factory {
+	private:
+		const cv::Mat & mat_;
+	public:
+		laplacian_image_factory () = delete;
+		laplacian_image_factory (const cv::Mat & mat) noexcept : mat_(mat) {	}
+		virtual cv::Mat image () override {
+			auto mat = convert_short_to_byte(mat_);
+			auto begin = reinterpret_cast<std::uint8_t *>(mat.data);
+			auto end = begin + std::size_t(mat.rows * mat.cols);
+			std::transform(begin,end,begin,[] (auto && b) noexcept {
+				return (b == 0) ? std::numeric_limits<std::uint8_t>::max() : 0;
+			});
+			return mat;
+		}
+	};
 	//	1. Convert the pixels to the CIELAB colour space
 	auto lab = bgr2lab(src);
 	//	2. Divide the image into like-colored cells using flood fill
@@ -425,6 +487,19 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv:
 	//	10. Merge until we have less than N cells (N-merging)
 	n_merge(*g,max_final_cells_);
 	if (o_) o_->n_merge(e);
+	//	End Sp3000's algorithm, begin our extensions
+	//
+	//	First we convert back to RGB and apply the
+	//	Laplacian operator as a form of edge detection
+	auto byte_img = factory.image();
+	auto lap = laplacian(byte_img);
+	laplacian_image_factory l_factory(lap);
+	if (o_) o_->laplacian(
+		sp3000_color_by_numbers_observer::laplacian_event(
+			l_factory
+		)
+	);
+	//	TODO
 	return result(factory.image());
 }
 
