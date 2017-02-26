@@ -63,6 +63,9 @@ FIND_PATH(OpenCV3_ML_INCLUDE_DIR
 FIND_PATH(OpenCV3_VIDEO_INCLUDE_DIR
           NAMES tracking.hpp background_segm.hpp
           PATHS "${OpenCV3_ROOT_DIR}/include/opencv2/video")
+FIND_PATH(OpenCV3_IMGCODECS_INCLUDE_DIR
+          NAMES imgcodecs.hpp
+          PATHS "${OpenCV3_ROOT_DIR}/include/opencv2/imgcodecs")
 
 # absolute path to all libraries
 SET(OpenCV3_LIBRARY_SEARCH_PATHS "${OpenCV3_ROOT_DIR}/lib")
@@ -100,6 +103,9 @@ IF(WIN32)
     FIND_LIBRARY(OpenCV3_VIDEO_LIBRARY
                  NAMES opencv_video310
                  PATHS ${OpenCV3_LIBRARY_SEARCH_PATHS})
+    FIND_LIBRARY(OpenCV3_IMGCODECS_LIBRARY
+                 NAMES opencv_imgcodecs310
+                 PATHS ${OpenCV3_LIBRARY_SEARCH_PATHS})
     FIND_LIBRARY(OpenCV3_FFMPEG_LIBRARY
                  NAMES opencv_ffmpeg310 opencv_ffmpeg310_64
                  PATHS ${OpenCV3_LIBRARY_SEARCH_PATHS})
@@ -113,6 +119,7 @@ ELSE(WIN32)
     FIND_LIBRARY(OpenCV3_HIGHGUI_LIBRARY    NAMES opencv_highgui    PATHS ${OpenCV3_LIBRARY_SEARCH_PATHS})
     FIND_LIBRARY(OpenCV3_ML_LIBRARY         NAMES opencv_ml         PATHS ${OpenCV3_LIBRARY_SEARCH_PATHS})
     FIND_LIBRARY(OpenCV3_VIDEO_LIBRARY      NAMES opencv_video      PATHS ${OpenCV3_LIBRARY_SEARCH_PATHS})
+    FIND_LIBRARY(OpenCV3_IMGCODECS_LIBRARY  NAMES opencv_imgcodecs  PATHS ${OpenCV3_LIBRARY_SEARCH_PATHS})
 ENDIF(WIN32)
 
 SET(OpenCV3_INCLUDE_DIRS
@@ -126,6 +133,7 @@ SET(OpenCV3_INCLUDE_DIRS
     ${OpenCV3_HIGHGUI_INCLUDE_DIR}
     ${OpenCV3_ML_INCLUDE_DIR}
     ${OpenCV3_VIDEO_INCLUDE_DIR}
+    ${OpenCV3_IMGCODECS_INCLUDE_DIR}
     )
 
 SET(OpenCV3_LIBRARIES
@@ -138,6 +146,7 @@ SET(OpenCV3_LIBRARIES
     ${OpenCV3_HIGHGUI_LIBRARY}
     ${OpenCV3_ML_LIBRARY}
     ${OpenCV3_VIDEO_LIBRARY}
+    ${OpenCV3_IMGCODECS_LIBRARY}
     )
 IF(WIN32)
     SET(OpenCV3_INCLUDE_DIRS
@@ -173,6 +182,7 @@ MARK_AS_ADVANCED(FORCE
                  OpenCV3_HIGHGUI_INCLUDE_DIR
                  OpenCV3_ML_INCLUDE_DIR
                  OpenCV3_VIDEO_INCLUDE_DIR
+                 OpenCV3_IMGCODECS_INCLUDE_DIR
                  OpenCV3_CORE_LIBRARY
                  OpenCV3_IMGPROC_LIBRARY
                  OpenCV3_FEATURES2D_LIBRARY
@@ -182,6 +192,7 @@ MARK_AS_ADVANCED(FORCE
                  OpenCV3_HIGHGUI_LIBRARY
                  OpenCV3_ML_LIBRARY
                  OpenCV3_VIDEO_LIBRARY
+                 OpenCV3_IMGCODECS_LIBRARY
                  )
 IF(WIN32)
     MARK_AS_ADVANCED(FORCE
