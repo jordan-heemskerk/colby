@@ -7,6 +7,7 @@
 #include "color_by_numbers.hpp"
 #include "optional.hpp"
 #include "hash.hpp"
+#include "sp3000_color_by_numbers_observer.hpp"
 #include <boost/iterator/indirect_iterator.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <opencv2/core/mat.hpp>
@@ -92,8 +93,9 @@ private:
 	float similar_cell_tolerance_;
 	std::size_t max_final_cells_;
 	std::size_t max_final_colors_;
-	cv::Mat convert_bgr_to_lab (const cv::Mat &) const;
-	cv::Mat convert_lab_to_bgr (const cv::Mat &) const;
+	sp3000_color_by_numbers_observer * o_;
+	static cv::Mat convert_bgr_to_lab (const cv::Mat &);
+	static cv::Mat convert_lab_to_bgr (const cv::Mat &);
 	static cell image_as_cell (const cv::Mat &);
 	static void subtract (cell &, const cell &);
 	std::unique_ptr<graph> divide (const cv::Mat &) const;
@@ -139,6 +141,52 @@ public:
 	 *		being merged.  Defaults to a sensible value.
 	 */
 	sp3000_color_by_numbers (
+		std::size_t max_final_cells,
+		std::size_t max_final_colors,
+		float flood_fill_tolerance = 0.01f,
+		std::size_t small_cell_threshold = 15,
+		float similar_cell_tolerance = 0.001f
+	);
+	/**
+	 *	Creates a new sp3000_color_by_numbers.
+	 *
+	 *	\param [in] o
+	 *		A \ref sp3000_color_by_numbers_observer object
+	 *		which shall receive events emitted by this object.
+	 *		This reference must remain valid for the lifetime
+	 *		of the constructed object or the behavior is
+	 *		undefined.
+	 *	\param [in] max_final_cells
+	 *		The maximum number of regions in the resulting
+	 *		images.
+	 *	\param [in] max_final_colors
+	 *		The maximum number of unique colors to use in the
+	 *		resulting images.
+	 *	\param [in] flood_fill_tolerance
+	 *		The tolerance for the flood fill portion
+	 *		of the algorithm as the distance in
+	 *		Euclidean space between CIELAB color
+	 *		coordinates.  All distances less than
+	 *		this value shall be admitted into the same
+	 *		region by the flood fill.  Defaults to a
+	 *		sensible value.
+	 *	\param [in] small_cell_threshold
+	 *		The threshold (in number of pixels) at or
+	 *		below which a cell shall be considered
+	 *		"small" for the small cell merging portion
+	 *		of the algorithm.  Cells deemed to be small
+	 *		shall be merged into their largest neighbor.
+	 *		Defaults to a sensible value.
+	 *	\param [in] similar_cell_tolerance
+	 *		The tolerance for the similar cell merging
+	 *		portion of the algorithm as the distance in
+	 *		Euclidean space between CIELAB color
+	 *		coordinates.  All distances less than this
+	 *		value shall result in the neighboring cells
+	 *		being merged.  Defaults to a sensible value.
+	 */
+	sp3000_color_by_numbers (
+		sp3000_color_by_numbers_observer & o,
 		std::size_t max_final_cells,
 		std::size_t max_final_colors,
 		float flood_fill_tolerance = 0.01f,
