@@ -1,17 +1,90 @@
 #include <boost/program_options.hpp>
 #include <colby/optional.hpp>
 #include <colby/sp3000_color_by_numbers.hpp>
+#include <colby/sp3000_color_by_numbers_observer.hpp>
 #include <colby/timer.hpp>
+#include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <chrono>
+#include <cstddef>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace {
+
+class observer : public colby::sp3000_color_by_numbers_observer {
+private:
+	bool show_;
+	colby::timer t_;
+	std::size_t n_merge_;
+	std::size_t flood_fill_;
+	std::size_t small_cells_;
+	std::vector<std::thread> ts_;
+	void show (const std::string & name, const base_event & e, std::size_t num = 0) {
+		if (!show_) return;
+		ts_.emplace_back([name,mat = e.image(),num] () {
+			std::ostringstream ss;
+			ss << "Sp3000 Color by Numbers - " << name;
+			if (num != 0) ss << " #" << num;
+			cv::imshow(ss.str(),mat);
+			cv::waitKey(0);
+		});
+	}
+	void print (const char * str) {
+		std::cout << str << " (" << elapsed_string() << ')' << std::endl;
+		t_.restart();
+	}
+public:
+	explicit observer (bool show = false)
+		:	show_(show),
+			n_merge_(0),
+			flood_fill_(0),
+			small_cells_(0)
+	{	}
+	~observer () noexcept {
+		for (auto && t : ts_) t.join();
+	}
+	colby::timer::duration elapsed () const {
+		return t_.elapsed();
+	}
+	std::string elapsed_string () const {
+		std::ostringstream ss;
+		ss << std::chrono::duration_cast<
+			std::chrono::milliseconds
+		>(elapsed()).count() << " ms";
+		return ss.str();
+	}
+	virtual void flood_fill (flood_fill_event e) override {
+		show("Flood Fill",e,++flood_fill_);
+		print("Flood fill complete!");
+	}
+	virtual void merge_small_cells (merge_small_cells_event e) override {
+		show("Merge Small Cells",e,++small_cells_);
+		print("Merge small cells complete!");
+	}
+	virtual void merge_similar_cells (merge_similar_cells_event e) override {
+		show("Merge Similar Cells",e);
+		print("Merge similar cells complete!");
+	}
+	virtual void n_merge (n_merge_event e) override {
+		show("N-Merge",e,++n_merge_);
+		print("N-merge complete!");
+	}
+	virtual void p_merge (p_merge_event e) override {
+		show("P-Merge",e);
+		print("P-merge complete!");
+	}
+	virtual void gaussian_smooth (gaussian_smooth_event e) override {
+		show("Gaussian Smooth",e);
+		print("Gaussian smooth complete!");
+	}
+};
 
 class program_options {
 public:
@@ -52,12 +125,13 @@ static void main_impl (int argc, const char ** argv) {
 	}
 	std::cout << "Read " << opts->in << ".\n"
 		<< "Converting to color by numbers..." << std::endl;
-	colby::sp3000_color_by_numbers impl(250,10);
+	observer o(true);
+	colby::sp3000_color_by_numbers impl(o,250,10);
 	colby::timer timer;
 	auto result = impl.convert(mat);
 	auto elapsed = timer.elapsed();
 	std::cout << "Converted to color by numbers (took "
-		<< std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << "ms).\n"
+		<< std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << " ms).\n"
 		<< "Saving to " << opts->out << "..." << std::endl;
 	if (!cv::imwrite(opts->out,result.image())) {
 		std::ostringstream ss;
