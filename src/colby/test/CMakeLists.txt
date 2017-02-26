@@ -1,4 +1,6 @@
 add_executable(tests
+	algorithm.cpp
+	hash.cpp
 	main.cpp
 )
 target_link_libraries(tests colby)
