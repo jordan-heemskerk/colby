@@ -1,6 +1,8 @@
 #include <boost/iterator/filter_iterator.hpp>
 #include <colby/algorithm.hpp>
+#include <colby/image_factory.hpp>
 #include <colby/sp3000_color_by_numbers.hpp>
+#include <colby/sp3000_color_by_numbers_observer.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/matx.hpp>
@@ -166,14 +168,14 @@ cv::Mat sp3000_color_by_numbers::graph::mat () const {
 	return retr;
 }
 
-cv::Mat sp3000_color_by_numbers::convert_bgr_to_lab (const cv::Mat & img) const {
+cv::Mat sp3000_color_by_numbers::convert_bgr_to_lab (const cv::Mat & img) {
 	cv::Mat retr;
 	cv::cvtColor(img,retr,CV_BGR2RGB);
 	if (!retr.data) throw std::runtime_error("cv::cvtColor failed to convert image to Lab");
 	return retr;
 }
 
-cv::Mat sp3000_color_by_numbers::convert_lab_to_bgr (const cv::Mat & img) const {
+cv::Mat sp3000_color_by_numbers::convert_lab_to_bgr (const cv::Mat & img) {
 	cv::Mat retr;
 	cv::cvtColor(img,retr,CV_RGB2BGR);
 	if (!retr.data) throw std::runtime_error("cv::cvtColor failed to convert image to BGR");
@@ -362,31 +364,66 @@ cv::Mat sp3000_color_by_numbers::gaussian_smooth (const graph & g, std::size_t k
 }
 
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv::Mat & src) {
+	class lazy_image_factory : public image_factory {
+	private:
+		const std::unique_ptr<graph> & g_;
+	public:
+		lazy_image_factory () = delete;
+		lazy_image_factory (const std::unique_ptr<graph> & g) noexcept : g_(g) {	}
+		virtual cv::Mat image () override {
+			auto mat = g_->mat();
+			return convert_lab_to_bgr(mat);
+		}
+	};
+	class immediate_image_factory : public image_factory {
+	private:
+		const cv::Mat & mat_;
+	public:
+		immediate_image_factory () = delete;
+		immediate_image_factory (const cv::Mat & mat) noexcept : mat_(mat) {	}
+		virtual cv::Mat image () override {
+			return convert_lab_to_bgr(mat_);
+		}
+	};
 	//	1. Convert the pixels to the CIELAB colour space
 	auto lab = convert_bgr_to_lab(src);
 	//	2. Divide the image into like-colored cells using flood fill
 	auto g = divide(lab);
+	lazy_image_factory factory(g);
+	sp3000_color_by_numbers_observer::base_event e(factory);
+	if (o_) o_->flood_fill(e);
 	//	3. Merge together small cells with their neighbours
 	merge_small_cells(*g);
+	if (o_) o_->merge_small_cells(e);
 	//	4. Merge together similarly-colored regions
 	merge_similar_cells(*g);
+	if (o_) o_->merge_similar_cells(e);
 	//	5. Merge until we have less than 1.5N cells (N-merging)
 	std::size_t max_final_cells_15 = max_final_cells_;
 	max_final_cells_15 += max_final_cells_ / 2U;
 	n_merge(*g,max_final_cells_15);
+	if (o_) o_->n_merge(e);
 	//	6. Merge until we have less than P colours, using k-means (P-merging)
 	p_merge(*g,max_final_colors_);
+	if (o_) o_->p_merge(e);
 	//	7. Gaussian Smoothing
 	auto smoothed = gaussian_smooth(*g,7);	//	TODO: Make this configurable
+	immediate_image_factory smoothed_factory(smoothed);
+	if (o_) o_->gaussian_smooth(
+		sp3000_color_by_numbers_observer::gaussian_smooth_event(
+			smoothed_factory
+		)
+	);
 	//	8. Do another flood fill pass to work the new regions
 	g = divide(smoothed);
+	if (o_) o_->flood_fill(e);
 	//	9. Do another small cell merge
 	merge_small_cells(*g);
+	if (o_) o_->merge_small_cells(e);
 	//	10. Merge until we have less than N cells (N-merging)
 	n_merge(*g,max_final_cells_);
-	auto retr = g->mat();
-	retr = convert_lab_to_bgr(retr);
-	return result(std::move(retr));
+	if (o_) o_->n_merge(e);
+	return result(factory.image());
 }
 
 sp3000_color_by_numbers::sp3000_color_by_numbers (
@@ -399,8 +436,27 @@ sp3000_color_by_numbers::sp3000_color_by_numbers (
 		small_cell_threshold_(small_cell_threshold),
 		similar_cell_tolerance_(similar_cell_tolerance),
 		max_final_cells_(max_final_cells),
-		max_final_colors_(max_final_colors)
+		max_final_colors_(max_final_colors),
+		o_(nullptr)
 {	}
+
+sp3000_color_by_numbers::sp3000_color_by_numbers (
+	sp3000_color_by_numbers_observer & o,
+	std::size_t max_final_cells,
+	std::size_t max_final_colors,
+	float flood_fill_tolerance,
+	std::size_t small_cell_threshold,
+	float similar_cell_tolerance
+)	:	sp3000_color_by_numbers(
+			max_final_cells,
+			max_final_colors,
+			flood_fill_tolerance,
+			small_cell_threshold,
+			similar_cell_tolerance
+		)
+{
+	o_ = &o;
+}
 
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert (const cv::Mat & src) {
 	//	TODO: More comprehensive conversion/handling
