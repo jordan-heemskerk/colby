@@ -76,6 +76,7 @@ private:
 	};
 	float flood_fill_tolerance_;
 	std::size_t small_cell_threshold_;
+	float similar_cell_tolerance_;
 	cv::Mat convert_bgr_to_lab (const cv::Mat &) const;
 	cv::Mat convert_lab_to_bgr (const cv::Mat &) const;
 	static cell image_as_cell (const cv::Mat &);
@@ -83,13 +84,14 @@ private:
 	std::unique_ptr<graph> divide (const cv::Mat &) const;
 	void merge_small_cells_impl (graph &, std::size_t) const;
 	void merge_small_cells (graph &) const;
+	void merge_similar_cells (graph &) const;
 	result convert_impl (const cv::Mat & src);
 public:
 	sp3000_color_by_numbers () = delete;
 	/**
 	 *
 	 */
-	explicit sp3000_color_by_numbers (float flood_fill_tolerance, std::size_t small_cell_threshold);
+	explicit sp3000_color_by_numbers (float flood_fill_tolerance, std::size_t small_cell_threshold, float similar_cell_tolerance);
 	virtual result convert (const cv::Mat & src) override;
 };
 

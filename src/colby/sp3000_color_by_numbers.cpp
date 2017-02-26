@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cassert>
 #include <functional>
+#include <iostream>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -154,6 +156,11 @@ void sp3000_color_by_numbers::subtract (cell & lhs, const cell & rhs) {
 	for (auto && obj : rhs) lhs.erase(obj);
 }
 
+static float squared_distance (const cv::Vec3f & a, const cv::Vec3f & b) noexcept {
+	auto diff = a - b;
+	return (diff[0] * diff[0]) + (diff[1] * diff[1]) + (diff[2] * diff[2]);
+}
+
 std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide (const cv::Mat & img) const {
 	auto unvisited = image_as_cell(img);
 	auto retr = std::make_unique<graph>();
@@ -174,9 +181,7 @@ std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide 
 					return false;
 				}
 				auto && curr_color = img.at<cv::Vec3f>(curr);
-				auto diff = curr_color - color;
-				auto squared_norm = (diff[0] * diff[0]) + (diff[1] * diff[1]) + (diff[2] * diff[2]);
-				if (squared_norm < tolerance) {
+				if (squared_distance(curr_color,color) < tolerance) {
 					vertex.add(curr,curr_color);
 					return true;
 				}
@@ -229,6 +234,45 @@ void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
 	while ((i++) < small_cell_threshold_) merge_small_cells_impl(g,i);
 }
 
+void sp3000_color_by_numbers::merge_similar_cells (graph & g) const {
+	auto compare = [] (auto a, auto b) noexcept {
+		if (a->size() != b->size()) return a->size() < b->size();
+		std::less<> cmp;
+		return cmp(a,b);
+	};
+	std::vector<graph::vertex *> sorted;
+	std::vector<graph::vertex *> to_merge;
+	sorted.reserve(g.size());
+	bool changed;
+	do {
+		std::cout << g.size() << std::endl;
+		auto copy = [] (auto && ref) noexcept {	return &ref;	};
+		auto vertices = g.vertices();
+		std::transform(vertices.begin(),vertices.end(),std::back_inserter(sorted),copy);
+		std::sort(sorted.begin(),sorted.end(),compare);
+		changed = false;
+		while (!sorted.empty()) {
+			std::cout << sorted.size() << std::endl;
+			auto && curr = *sorted.back();
+			sorted.pop_back();
+			auto pred = [&] (auto && v) noexcept {
+				return squared_distance(v.color(),curr.color()) < similar_cell_tolerance_;
+			};
+			auto neighbors = curr.neighbors();
+			auto begin = boost::make_filter_iterator(pred,neighbors.begin(),neighbors.end());
+			auto end = boost::make_filter_iterator(pred,neighbors.end(),neighbors.end());
+			to_merge.clear();
+			std::transform(begin,end,std::back_inserter(to_merge),copy);
+			for (auto && ptr : to_merge) {
+				auto iter = std::lower_bound(sorted.begin(),sorted.end(),ptr,compare);
+				if (iter != sorted.end()) sorted.erase(iter);
+				curr.merge(*ptr);
+				changed = true;
+			}
+		}
+	} while (changed);
+}
+
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv::Mat & src) {
 	//	1. Convert the pixels to the CIELAB colour space
 	auto lab = convert_bgr_to_lab(src);
@@ -236,6 +280,8 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv:
 	auto g = divide(lab);
 	//	3. Merge together small cells with their neighbours
 	merge_small_cells(*g);
+	//	4. Merge together similarly-coloured regions
+	merge_similar_cells(*g);
 
 
 	cv::Mat mat(src.rows,src.cols,CV_32FC3);
@@ -249,9 +295,11 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv:
 
 sp3000_color_by_numbers::sp3000_color_by_numbers (
 	float flood_fill_tolerance,
-	std::size_t small_cell_threshold
+	std::size_t small_cell_threshold,
+	float similar_cell_tolerance
 )	:	flood_fill_tolerance_(flood_fill_tolerance),
-		small_cell_threshold_(small_cell_threshold)
+		small_cell_threshold_(small_cell_threshold),
+		similar_cell_tolerance_(similar_cell_tolerance)
 {	}
 
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert (const cv::Mat & src) {
