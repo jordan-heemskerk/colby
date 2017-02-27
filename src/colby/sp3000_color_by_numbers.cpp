@@ -358,8 +358,26 @@ void sp3000_color_by_numbers::p_merge (graph & g, std::size_t p) const {
 }
 
 cv::Mat sp3000_color_by_numbers::gaussian_smooth (const graph & g, std::size_t kernel_size) const {
-	auto retr = g.mat();
-	cv::GaussianBlur(retr,retr,cv::Size(kernel_size,kernel_size),0);
+	auto img = g.mat();
+	cv::Mat retr;
+	cv::GaussianBlur(img,retr,cv::Size(kernel_size,kernel_size),0);
+	for (int i = 0; i < img.rows; ++i) {
+		for (int j = 0; j < img.cols; ++j) {
+			auto p = cv::Point(j,i);
+			auto c = img.at<cv::Vec3f>(p);
+			auto && c_blur = retr.at<cv::Vec3f>(p);
+			auto dist = squared_distance(c,c_blur);
+			neighbors(img, p, [&] (auto && n) noexcept {
+				auto n_c = img.at<cv::Vec3f>(n);
+				auto d = squared_distance(n_c,c_blur);
+				if (d < dist) {
+					c = n_c;
+					dist = d;
+				}
+			});
+			c_blur = c;
+		}
+	}
 	return retr;
 }
 
