@@ -73,6 +73,10 @@ void sp3000_color_by_numbers::graph::vertex::merge (vertex & v, bool avg) {
 		cell_.insert(p);
 		owner_.lookup_[p] = this;
 	}
+	//	Swap v.cell_ to allow underlying datatypes to perform cleanup
+	decltype(v.cell_) tmp;
+	using std::swap;
+	swap(tmp,v.cell_);
 	auto erased = v.adj_list_.erase(this);
 	assert(erased);
 	erased = adj_list_.erase(&v);
