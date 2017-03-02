@@ -94,8 +94,6 @@ private:
 	std::size_t max_final_cells_;
 	std::size_t max_final_colors_;
 	sp3000_color_by_numbers_observer * o_;
-	static cv::Mat convert_bgr_to_lab (const cv::Mat &);
-	static cv::Mat convert_lab_to_bgr (const cv::Mat &);
 	static cell image_as_cell (const cv::Mat &);
 	static void subtract (cell &, const cell &);
 	std::unique_ptr<graph> divide (const cv::Mat &) const;
@@ -143,9 +141,9 @@ public:
 	sp3000_color_by_numbers (
 		std::size_t max_final_cells,
 		std::size_t max_final_colors,
-		float flood_fill_tolerance = 0.01f,
-		std::size_t small_cell_threshold = 15,
-		float similar_cell_tolerance = 0.001f
+		float flood_fill_tolerance = 10.f,
+		std::size_t small_cell_threshold = 10,
+		float similar_cell_tolerance = 5.f
 	);
 	/**
 	 *	Creates a new sp3000_color_by_numbers.
@@ -189,9 +187,9 @@ public:
 		sp3000_color_by_numbers_observer & o,
 		std::size_t max_final_cells,
 		std::size_t max_final_colors,
-		float flood_fill_tolerance = 0.01f,
-		std::size_t small_cell_threshold = 15,
-		float similar_cell_tolerance = 0.001f
+		float flood_fill_tolerance = 10.f,
+		std::size_t small_cell_threshold = 10,
+		float similar_cell_tolerance = 5.f
 	);
 	virtual result convert (const cv::Mat & src) override;
 };
