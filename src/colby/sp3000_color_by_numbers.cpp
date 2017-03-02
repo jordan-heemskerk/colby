@@ -260,14 +260,7 @@ void sp3000_color_by_numbers::merge_small_cells_impl (graph & g, std::size_t siz
 			return a.size() < b.size();
 		});
 		if (iter == ns.end()) throw std::logic_error("Small cell with no neighbors");
-		//	We don't allow this cell to contribute to average of
-		//	larger cell:
-		//
-		//	"You don't want to pollute your large region with that
-		//	tiny little bit."
-		//
-		//	—Jordan Heemskerk, 2017
-		iter->merge(curr,false);
+		iter->merge(curr);
 	}
 }
 
