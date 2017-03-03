@@ -5,6 +5,8 @@
 #pragma once
 
 #include <opencv2/core/mat.hpp>
+#include <opencv2/core/matx.hpp>
+#include <vector>
 
 namespace colby {
 
@@ -30,8 +32,17 @@ public:
 	 *	image to a color by numbers representation.
 	 */
 	class result {
+	public:
+		/**
+		 *	Maps numbers to colors.
+		 *
+		 *	The zero relative Nth color maps to all
+		 *	cells with the one relative Mth number.
+		 */
+		using palette_type = std::vector<cv::Vec3f>;
 	private:
 		cv::Mat img_;
+		palette_type p_;
 	public:
 		result () = delete;
 		result (const result &) = default;
@@ -44,8 +55,11 @@ public:
 		 *	\param [in] img
 		 *		The cv::Mat containing the resulting
 		 *		image.
+		 *	\param [in] p
+		 *		The \ref palette_type containing the
+		 *		resulting color palette.
 		 */
-		explicit result (cv::Mat img);
+		result (cv::Mat img, palette_type p);
 		/**
 		 *	Returns the resulting image.
 		 *
@@ -55,6 +69,15 @@ public:
 		const cv::Mat & image () const & noexcept;
 		cv::Mat & image () & noexcept;
 		cv::Mat && image () && noexcept;
+		/**
+		 *	Returns the resulting palette.
+		 *
+		 *	\return
+		 *		The resulting palette.
+		 */
+		const palette_type & palette () const & noexcept;
+		palette_type & palette () & noexcept;
+		palette_type && palette () && noexcept;
 	};
 	/**
 	 *	Converts a source image to a color by numbers

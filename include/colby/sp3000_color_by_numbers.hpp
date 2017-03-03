@@ -18,6 +18,7 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace colby {
 
@@ -101,13 +102,14 @@ private:
 	static cv::Mat laplacian (const cv::Mat &);
 	static cell image_as_cell (const cv::Mat &);
 	static void subtract (cell &, const cell &);
-	std::unique_ptr<graph> divide (const cv::Mat &) const;
-	void merge_small_cells_impl (graph &, std::size_t) const;
-	void merge_small_cells (graph &) const;
+	std::unique_ptr<graph> divide (const cv::Mat &, bool exact = false) const;
+	void merge_small_cells_impl (graph &, std::size_t, bool) const;
+	void merge_small_cells (graph &, bool avg = true) const;
 	void merge_similar_cells (graph &) const;
 	void n_merge (graph &, std::size_t) const;
 	void p_merge (graph &, std::size_t) const;
 	cv::Mat gaussian_smooth (const graph &, std::size_t) const;
+	result palette (const cv::Mat &, const graph &) const;
 	result convert_impl (const cv::Mat & src);
 public:
 	sp3000_color_by_numbers () = delete;

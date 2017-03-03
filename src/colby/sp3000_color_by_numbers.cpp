@@ -1,6 +1,9 @@
 #include <boost/iterator/filter_iterator.hpp>
+#include <boost/iterator/zip_iterator.hpp>
+#include <boost/tuple/tuple.hpp>
 #include <colby/algorithm.hpp>
 #include <colby/conversions.hpp>
+#include <colby/hash.hpp>
 #include <colby/image_factory.hpp>
 #include <colby/sp3000_color_by_numbers.hpp>
 #include <colby/sp3000_color_by_numbers_observer.hpp>
@@ -17,8 +20,10 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -40,9 +45,18 @@ void sp3000_color_by_numbers::graph::vertex::add (cv::Point p, cv::Vec3f c) {
 		owner_.lookup_.erase(pair.first);
 		throw;
 	}
-	color_ *= float(cell_.size() - 1U);
-	color_ += c;
-	color_ /= float(cell_.size());
+	//	While always averaging works numerically
+	//	and produces correct colored output when
+	//	we want to number regions we rely on them
+	//	having exactly the same color. Unfortunately
+	//	during the second flood fill when we're
+	//	creating new regions the averaging disrupts
+	//	this process without this check.
+	if (color_ != c) {
+		color_ *= float(cell_.size() - 1U);
+		color_ += c;
+		color_ /= float(cell_.size());
+	}
 }
 
 void sp3000_color_by_numbers::graph::vertex::add (vertex & v) {
@@ -236,12 +250,12 @@ static float squared_distance (const cv::Vec3f & a, const cv::Vec3f & b) noexcep
 	return (diff[0] * diff[0]) + (diff[1] * diff[1]) + (diff[2] * diff[2]);
 }
 
-std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide (const cv::Mat & img) const {
+std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide (const cv::Mat & img, bool exact) const {
 	auto unvisited = image_as_cell(img);
 	auto retr = std::make_unique<graph>(img);
 	std::vector<cv::Point> stack;
 	cell set;
-	float tolerance = flood_fill_tolerance_ * flood_fill_tolerance_;
+	float tolerance = exact ? 0 : (flood_fill_tolerance_ * flood_fill_tolerance_);
 	while (!unvisited.empty()) {
 		auto && point = *unvisited.begin();
 		auto && color = img.at<cv::Vec3f>(point);
@@ -256,7 +270,7 @@ std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide 
 					return false;
 				}
 				auto && curr_color = img.at<cv::Vec3f>(curr);
-				if (squared_distance(curr_color,color) < tolerance) {
+				if (squared_distance(curr_color,color) <= tolerance) {
 					vertex.add(curr,curr_color);
 					return true;
 				}
@@ -270,7 +284,7 @@ std::unique_ptr<sp3000_color_by_numbers::graph> sp3000_color_by_numbers::divide 
 	return retr;
 }
 
-void sp3000_color_by_numbers::merge_small_cells_impl (graph & g, std::size_t size) const {
+void sp3000_color_by_numbers::merge_small_cells_impl (graph & g, std::size_t size, bool avg) const {
 	//	The criterion for choosing which neighbor to merge
 	//	a small cell into is implemented by Sp3000 as:
 	//
@@ -293,13 +307,13 @@ void sp3000_color_by_numbers::merge_small_cells_impl (graph & g, std::size_t siz
 			return a.size() < b.size();
 		});
 		if (iter == ns.end()) throw std::logic_error("Small cell with no neighbors");
-		iter->merge(curr);
+		iter->merge(curr,avg);
 	}
 }
 
-void sp3000_color_by_numbers::merge_small_cells (graph & g) const {
+void sp3000_color_by_numbers::merge_small_cells (graph & g, bool avg) const {
 	std::size_t i = 0;
-	while ((i++) < small_cell_threshold_) merge_small_cells_impl(g,i);
+	while ((i++) < small_cell_threshold_) merge_small_cells_impl(g,i,avg);
 }
 
 void sp3000_color_by_numbers::merge_similar_cells (graph & g) const {
@@ -411,6 +425,111 @@ cv::Mat sp3000_color_by_numbers::gaussian_smooth (const graph & g, std::size_t k
 	return retr;
 }
 
+sp3000_color_by_numbers::result sp3000_color_by_numbers::palette (const cv::Mat & outline, const graph & g) const {
+	//	The first thing we need to do is
+	//	obtain a mapping between colors
+	//	and cells
+	std::unordered_multimap<cv::Vec3f,const graph::vertex *> colors;
+	auto && vertices = g.vertices();
+	std::transform(vertices.begin(),vertices.end(),std::inserter(colors,colors.begin()),[&] (auto && v) noexcept {
+		return std::make_pair(v.color(),&v);
+	});
+	//	Next we discover and order the unique
+	//	colors based on the smallest cell
+	//	they're associated with: This will
+	//	allow us to assign smaller numbers
+	//	(representation-/pixels-wise) to
+	//	smaller cells
+	std::vector<std::pair<cv::Vec3f,std::size_t>> pairs;
+	auto begin = colors.begin();
+	auto end = colors.end();
+	while (begin != end) {
+		auto curr = begin;
+		++begin;
+		begin = std::find_if_not(begin,end,[&] (auto && pair) noexcept {
+			return pair.first == curr->first;
+		});
+		pairs.emplace_back(
+			curr->first,
+			std::min_element(curr,begin,[] (auto && a, auto && b) noexcept {
+				return a.second->size() < b.second->size();
+			})->second->size()
+		);
+	}
+	std::sort(pairs.begin(),pairs.end(),[] (auto && a, auto && b) noexcept {
+		return a.second < b.second;
+	});
+	result::palette_type p;
+	p.reserve(pairs.size());
+	std::transform(pairs.begin(),pairs.end(),std::back_inserter(p),[] (auto && pair) noexcept {
+		return pair.first;
+	});
+	//	Next we generate the necessary
+	//	numbers and discover their sizes:
+	//	We then order them to obtain a
+	//	bijection between color and number
+	std::vector<std::pair<std::size_t,cv::Size>> numbers;
+	numbers.reserve(p.size());
+	int font_face_ = cv::FONT_HERSHEY_PLAIN;
+	double font_scale_ = 1.0;
+	int thickness_ = 1;
+	std::generate_n(std::back_inserter(numbers),p.size(),[&,n = std::size_t(0)] () mutable {
+		++n;
+		std::ostringstream ss;
+		ss << n;
+		int baseline = 0;
+		return std::make_pair(n,cv::getTextSize(ss.str(),font_face_,font_scale_,thickness_,&baseline));
+	});
+	std::sort(numbers.begin(),numbers.end(),[] (auto && a, auto && b) noexcept {
+		auto && as = a.second;
+		auto && bs = b.second;
+		return (as.height * as.width) < (bs.height * bs.width);
+	});
+	//	Now we draw the numbers on the image
+	//
+	//	For now we assume that we can just
+	//	draw the number on the barycenter of
+	//	each cell, this is probably not the
+	//	best way to do this but it'll do for
+	//	now
+	cv::Mat retr(outline);
+	std::for_each(
+		boost::make_zip_iterator(
+			boost::make_tuple(p.begin(),numbers.begin())
+		),
+		boost::make_zip_iterator(
+			boost::make_tuple(p.end(),numbers.end())
+		),
+		[&] (auto && tuple) {
+			auto && c = boost::get<0>(tuple);
+			auto && pair = boost::get<1>(tuple);
+			auto && n = pair.first;
+			auto && size = pair.second;
+			auto iters = colors.equal_range(c);
+			std::ostringstream ss;
+			ss << n;
+			auto str = ss.str();
+			std::for_each(iters.first,iters.second,[&] (auto && pair) {
+				auto && v = *pair.second;
+				auto && points = v.points();
+				cv::Vec<double,2> avg(0,0);
+				avg = std::accumulate(points.begin(),points.end(),avg,[] (auto init, auto && next) noexcept {
+					return init + cv::Vec<double,2>(next.x,next.y);
+				});
+				avg /= double(v.size());
+				cv::Point p(avg[0],avg[1]);
+				p.x -= size.width/2;
+				p.x = std::max(0,p.x);
+				p.y += size.height/2;
+				p.y = std::min(retr.rows - 1,p.y);
+				p.y = std::max(0,p.y);
+				cv::putText(retr,str,p,font_face_,font_scale_,cv::Vec3f(0,0,0),thickness_);
+			});
+		}
+	);
+	return result(std::move(retr),std::move(p));
+}
+
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv::Mat & src) {
 	class lazy_image_factory : public image_factory {
 	private:
@@ -479,10 +598,10 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv:
 		)
 	);
 	//	8. Do another flood fill pass to work the new regions
-	g = divide(smoothed);
+	g = divide(smoothed,true);
 	if (o_) o_->flood_fill(e);
 	//	9. Do another small cell merge
-	merge_small_cells(*g);
+	merge_small_cells(*g,false);
 	if (o_) o_->merge_small_cells(e);
 	//	10. Merge until we have less than N cells (N-merging)
 	n_merge(*g,max_final_cells_);
@@ -499,8 +618,10 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv:
 			l_factory
 		)
 	);
-	//	TODO
-	return result(factory.image());
+	//	Next we number the colors, generate the palette,
+	//	and draw the numbers in the cells
+	auto retr = palette(l_factory.image(),*g);
+	return retr;
 }
 
 sp3000_color_by_numbers::sp3000_color_by_numbers (
