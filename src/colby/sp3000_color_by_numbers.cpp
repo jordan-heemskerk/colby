@@ -1,5 +1,6 @@
 #include <boost/iterator/filter_iterator.hpp>
 #include <colby/algorithm.hpp>
+#include <colby/conversions.hpp>
 #include <colby/image_factory.hpp>
 #include <colby/sp3000_color_by_numbers.hpp>
 #include <colby/sp3000_color_by_numbers_observer.hpp>
@@ -169,20 +170,6 @@ cv::Mat sp3000_color_by_numbers::graph::mat () const {
 			retr.at<cv::Vec3f>(p) = c;
 		}
 	}
-	return retr;
-}
-
-cv::Mat sp3000_color_by_numbers::convert_bgr_to_lab (const cv::Mat & img) {
-	cv::Mat retr;
-	cv::cvtColor(img,retr,CV_BGR2RGB);
-	if (!retr.data) throw std::runtime_error("cv::cvtColor failed to convert image to Lab");
-	return retr;
-}
-
-cv::Mat sp3000_color_by_numbers::convert_lab_to_bgr (const cv::Mat & img) {
-	cv::Mat retr;
-	cv::cvtColor(img,retr,CV_RGB2BGR);
-	if (!retr.data) throw std::runtime_error("cv::cvtColor failed to convert image to BGR");
 	return retr;
 }
 
@@ -387,7 +374,7 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv:
 		lazy_image_factory (const std::unique_ptr<graph> & g) noexcept : g_(g) {	}
 		virtual cv::Mat image () override {
 			auto mat = g_->mat();
-			return convert_lab_to_bgr(mat);
+			return lab2bgr(mat);
 		}
 	};
 	class immediate_image_factory : public image_factory {
@@ -397,11 +384,11 @@ sp3000_color_by_numbers::result sp3000_color_by_numbers::convert_impl (const cv:
 		immediate_image_factory () = delete;
 		immediate_image_factory (const cv::Mat & mat) noexcept : mat_(mat) {	}
 		virtual cv::Mat image () override {
-			return convert_lab_to_bgr(mat_);
+			return lab2bgr(mat_);
 		}
 	};
 	//	1. Convert the pixels to the CIELAB colour space
-	auto lab = convert_bgr_to_lab(src);
+	auto lab = bgr2lab(src);
 	//	2. Divide the image into like-colored cells using flood fill
 	auto g = divide(lab);
 	lazy_image_factory factory(g);
@@ -476,13 +463,7 @@ sp3000_color_by_numbers::sp3000_color_by_numbers (
 sp3000_color_by_numbers::result sp3000_color_by_numbers::convert (const cv::Mat & src) {
 	//	TODO: More comprehensive conversion/handling
 	if (src.type() != CV_8UC3) throw std::logic_error("Expected 3 channel 8 bit image");
-	cv::Mat mat;
-	src.convertTo(mat,CV_32FC3,1.0f / 255.0f);
-	if (!mat.data) throw std::runtime_error("cv::Mat::convertTo failed to convert to 3 channel 32 bit float image");
-	auto retr = convert_impl(mat);
-	retr.image().convertTo(mat,CV_8UC3,255);
-	if (!mat.data) throw std::runtime_error("cv::Mat::convertTo failed to convert to 3 channel 8 bit image");
-	retr.image() = std::move(mat);
+	auto retr = convert_impl(src);
 	return retr;
 }
 
